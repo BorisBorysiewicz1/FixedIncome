@@ -157,3 +157,74 @@ for n in results:
     print(f"a_x: {results[n]['a_x']}, b_x: {results[n]['b_x']}, R2_x: {results[n]['R2_x']}, se(a_x): {results[n]['se(a_x)']}, se(b_x): {results[n]['se(b_x)']}")
     print(f"a_y: {results[n]['a_y']}, b_y: {results[n]['b_y']}, R2_y: {results[n]['R2_y']}, se(a_y): {results[n]['se(a_y)']}, se(b_y): {results[n]['se(b_y)']}")
     print()
+
+#--------------------------------------------------------------------------------
+
+# 4. Correct for overlapping samples using Newey-West standard errors and test the expectation hypothesis
+
+# Define the regression function with Newey-West standard errors
+def regression_newey_west(forwards, yield1, rx, lag=12):
+    """ """
+    X = forwards - yield1
+    X = sm.add_constant(X)
+    results = sm.OLS(rx, X).fit(cov_type='HAC', cov_kwds={'maxlags': 1})
+    return results
+
+# Estimate the Fama-Bliss regressions with Newey-West standard errors and test the expectation hypothesis
+results_newey_west = {}
+
+for n in range(2, 6):
+    # Define the dependent and independent variables for the first regression
+    rx_nt1 = data[f'excess_return{n}']
+    f_n_y1 = data[f'f{n}'] - data['y1']
+    
+    # Fit the first regression model with Newey-West standard errors
+    model1_nw = regression_newey_west(data[f'f{n}'], data['y1'], rx_nt1)
+    
+    # Define the dependent and independent variables for the second regression
+    y1_tn1_y1 = data['y1'].shift(-n+1) - data['y1']
+    y1_tn1_y1 = y1_tn1_y1.dropna()
+    f_n_y1_shifted = f_n_y1.shift(-n+1).dropna()
+    
+    # Fit the second regression model with Newey-West standard errors
+    model2_nw = regression_newey_west(f_n_y1_shifted, data['y1'].shift(-n+1).dropna(), y1_tn1_y1)
+    
+    # Store the results
+    results_newey_west[n] = {
+        'a_x': model1_nw.params['const'],
+        'b_x': model1_nw.params[0],
+        'R2_x': model1_nw.rsquared,
+        'se(a_x)': model1_nw.bse['const'],
+        'se(b_x)': model1_nw.bse[0],
+        'a_y': model2_nw.params['const'],
+        'b_y': model2_nw.params[0],
+        'R2_y': model2_nw.rsquared,
+        'se(a_y)': model2_nw.bse['const'],
+        'se(b_y)': model2_nw.bse[0]
+    }
+
+# Display the results with Newey-West standard errors
+for n in results_newey_west:
+    print(f"Results for n = {n} with Newey-West standard errors:")
+    print(f"a_x: {results_newey_west[n]['a_x']}, b_x: {results_newey_west[n]['b_x']}, R2_x: {results_newey_west[n]['R2_x']}, se(a_x): {results_newey_west[n]['se(a_x)']}, se(b_x): {results_newey_west[n]['se(b_x)']}")
+    print(f"a_y: {results_newey_west[n]['a_y']}, b_y: {results_newey_west[n]['b_y']}, R2_y: {results_newey_west[n]['R2_y']}, se(a_y): {results_newey_west[n]['se(a_y)']}, se(b_y): {results_newey_west[n]['se(b_y)']}")
+    print()
+
+
+# Test the expectation hypothesis for all cases
+for n in range(2, 6):
+    # Test the hypothesis that b_x = 0
+    t_stat_b_x = results_newey_west[n]['b_x'] / results_newey_west[n]['se(b_x)']
+    p_value_b_x = 2 * (1 - st.norm.cdf(np.abs(t_stat_b_x)))
+    
+    # Test the hypothesis that b_y = 1
+    t_stat_b_y = (results_newey_west[n]['b_y'] - 1) / results_newey_west[n]['se(b_y)']
+    p_value_b_y = 2 * (1 - st.norm.cdf(np.abs(t_stat_b_y)))
+    
+    print(f"Expectation hypothesis test results for n = {n}:")
+    print(f"t-statistic for b_x: {t_stat_b_x}, p-value: {p_value_b_x}")
+    print(f"t-statistic for b_y: {t_stat_b_y}, p-value: {p_value_b_y}")
+    print()
+
+#--------------------------------------------------------------------------------
+
